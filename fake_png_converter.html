@@ -1,0 +1,396 @@
+<!--REMEMBER TO PASTE INTO ADDRESS BAR WITH INITIAL "data:text/html,"-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNG Transparency Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #007cba;
+        }
+        .upload-area.dragover {
+            border-color: #007cba;
+            background-color: #f0f8ff;
+        }
+        #fileInput {
+            display: none;
+        }
+        .preview-section {
+            margin: 20px 0;
+            display: none;
+        }
+        .image-comparison {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .image-container {
+            flex: 1;
+            min-width: 300px;
+            text-align: center;
+        }
+        .image-container h3 {
+            margin: 10px 0;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .control-group {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        label {
+            min-width: 120px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            flex: 1;
+            max-width: 200px;
+        }
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+        }
+        button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .checkered-bg {
+            background-image: 
+                linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>JPG to PNG Transparency Converter</h1>
+        <p>Upload  JPG image with a fake transparency background to convert it to a PNG with real transparency.</p>
+	
+	<p>By Yaman Saran</p>
+        
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <p>Click here or drag and drop your JPG image</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="preview-section" id="previewSection">
+            <div class="controls">
+                <h3>Transparency Settings</h3>
+                <div class="control-group">
+                    <label>Tolerance:</label>
+                    <input type="range" id="tolerance" min="0" max="100" value="10">
+                    <input type="number" id="toleranceValue" min="0" max="100" value="10">
+                    <span>Higher values remove more similar colors</span>
+                </div>
+                <div class="control-group">
+                    <label>Target Color:</label>
+                    <button onclick="selectBackgroundColor()" id="colorPicker">Click to pick background color</button>
+                    <div id="selectedColor" style="width: 30px; height: 30px; border: 1px solid #000; display: inline-block; margin-left: 10px; background: #f0f0f0;"></div>
+                </div>
+                <button onclick="processImage()" id="processBtn">Remove Background</button>
+                <button onclick="autoDetectCheckerboard()" id="autoBtn">Auto-detect Checkerboard</button>
+            </div>
+
+            <div class="image-comparison">
+                <div class="image-container">
+                    <h3>Original</h3>
+                    <canvas id="originalCanvas" class="image-preview"></canvas>
+                </div>
+                <div class="image-container">
+                    <h3>With Transparency</h3>
+                    <div class="checkered-bg">
+                        <canvas id="processedCanvas" class="image-preview"></canvas>
+                    </div>
+                    <br>
+                    <button onclick="downloadImage()" id="downloadBtn" disabled>Download PNG</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let originalImage = null;
+        let selectedColor = { r: 240, g: 240, b: 240 }; // Default light gray
+        
+        // File upload handling
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.querySelector('.upload-area');
+        const previewSection = document.getElementById('previewSection');
+        
+        fileInput.addEventListener('change', handleFile);
+        
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile({ target: { files } });
+            }
+        });
+        
+        // Tolerance slider synchronization
+        const tolerance = document.getElementById('tolerance');
+        const toleranceValue = document.getElementById('toleranceValue');
+        
+        tolerance.addEventListener('input', () => {
+            toleranceValue.value = tolerance.value;
+        });
+        
+        toleranceValue.addEventListener('input', () => {
+            tolerance.value = toleranceValue.value;
+        });
+        
+        // Handle file upload
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+                    displayOriginalImage();
+                    previewSection.style.display = 'block';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // Display the original image on canvas
+        function displayOriginalImage() {
+            const canvas = document.getElementById('originalCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size with scaling
+            const maxSize = 300;
+            const scale = Math.min(maxSize / originalImage.width, maxSize / originalImage.height);
+            canvas.width = originalImage.width * scale;
+            canvas.height = originalImage.height * scale;
+            
+            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+        }
+        
+        // Allow user to click and select background color
+        function selectBackgroundColor() {
+            const canvas = document.getElementById('originalCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.style.cursor = 'crosshair';
+            
+            const clickHandler = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (originalImage.width / canvas.width);
+                const y = (e.clientY - rect.top) * (originalImage.height / canvas.height);
+                
+                // Create temporary canvas to get pixel data from original image
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = originalImage.width;
+                tempCanvas.height = originalImage.height;
+                tempCtx.drawImage(originalImage, 0, 0);
+                
+                const imageData = tempCtx.getImageData(x, y, 1, 1);
+                const pixel = imageData.data;
+                
+                selectedColor = {
+                    r: pixel[0],
+                    g: pixel[1],
+                    b: pixel[2]
+                };
+                
+                // Update color display
+                const colorDisplay = document.getElementById('selectedColor');
+                colorDisplay.style.backgroundColor = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
+                
+                canvas.style.cursor = 'default';
+                canvas.removeEventListener('click', clickHandler);
+            };
+            
+            canvas.addEventListener('click', clickHandler);
+        }
+        
+        // Auto-detect checkerboard pattern
+        function autoDetectCheckerboard() {
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = originalImage.width;
+            tempCanvas.height = originalImage.height;
+            tempCtx.drawImage(originalImage, 0, 0);
+            
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imageData.data;
+            
+            // Sample corners to find checkerboard colors
+            const corners = [
+                [0, 0],
+                [tempCanvas.width - 1, 0],
+                [0, tempCanvas.height - 1],
+                [tempCanvas.width - 1, tempCanvas.height - 1]
+            ];
+            
+            const colors = [];
+            for (let [x, y] of corners) {
+                const index = (y * tempCanvas.width + x) * 4;
+                colors.push({
+                    r: data[index],
+                    g: data[index + 1],
+                    b: data[index + 2]
+                });
+            }
+            
+            // Use the most common corner color as background
+            selectedColor = colors[0];
+            
+            // Update color display
+            const colorDisplay = document.getElementById('selectedColor');
+            colorDisplay.style.backgroundColor = `rgb(${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b})`;
+            
+            // Auto-process the image
+            processImage();
+        }
+        
+        // Main image processing function
+        function processImage() {
+            if (!originalImage) return;
+            
+            const processedCanvas = document.getElementById('processedCanvas');
+            const ctx = processedCanvas.getContext('2d');
+            
+            // Set canvas size with scaling
+            const maxSize = 300;
+            const scale = Math.min(maxSize / originalImage.width, maxSize / originalImage.height);
+            processedCanvas.width = originalImage.width * scale;
+            processedCanvas.height = originalImage.height * scale;
+            
+            // Create temporary canvas for full-size processing
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = originalImage.width;
+            tempCanvas.height = originalImage.height;
+            tempCtx.drawImage(originalImage, 0, 0);
+            
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imageData.data;
+            
+            const toleranceValue = parseInt(document.getElementById('tolerance').value);
+            
+            // Process each pixel
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                // Calculate color distance using Euclidean distance
+                const distance = Math.sqrt(
+                    Math.pow(r - selectedColor.r, 2) +
+                    Math.pow(g - selectedColor.g, 2) +
+                    Math.pow(b - selectedColor.b, 2)
+                );
+                
+                // If pixel is close enough to selected color, make it transparent
+                if (distance <= toleranceValue * 4.4) {
+                    data[i + 3] = 0; // Set alpha to 0 (transparent)
+                }
+            }
+            
+            tempCtx.putImageData(imageData, 0, 0);
+            
+            // Draw scaled version to preview canvas
+            ctx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+            ctx.drawImage(tempCanvas, 0, 0, processedCanvas.width, processedCanvas.height);
+            
+            // Store full-size processed image data for download
+            processedCanvas._fullSizeImageData = { canvas: tempCanvas, imageData };
+            
+            document.getElementById('downloadBtn').disabled = false;
+        }
+        
+        // Download the processed image as PNG
+        function downloadImage() {
+            const processedCanvas = document.getElementById('processedCanvas');
+            if (!processedCanvas._fullSizeImageData) return;
+            
+            const { canvas } = processedCanvas._fullSizeImageData;
+            
+            // Create and trigger download
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'transparent_image.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+    </script>
+</body>
+</html>
